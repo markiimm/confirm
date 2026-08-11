@@ -1,0 +1,180 @@
+import { useEffect, useState } from 'react';
+import { useProtectedPage } from '../../lib/useProtectedPage';
+import { EVENT_TYPES } from '../../lib/eventTypes';
+import { PATTERN_TYPES } from '../../lib/patternTypes';
+import { Shell, Loading, Empty, SUBSCRIPTION_META } from '../../components/ui';
+import { useToast } from '../../components/Toast';
+
+const BLANK = {
+  full_name: '', email: '', password: '',
+  plan: 'normal', pattern_type: 'lista_confirmacao', business_type: 'casamento',
+};
+
+export default function ConsultantsPage() {
+  const { session, profile, loading } = useProtectedPage('owner');
+  const toast = useToast();
+  const [consultants, setConsultants] = useState(null);
+  const [form, setForm] = useState(BLANK);
+  const [showForm, setShowForm] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  async function loadConsultants(token) {
+    const res = await fetch('/api/owner/consultants', { headers: { Authorization: `Bearer ${token}` } });
+    const data = await res.json();
+    setConsultants(data.consultants || []);
+  }
+
+  useEffect(() => { if (session) loadConsultants(session.access_token); }, [session]);
+
+  async function handleCreate(e) {
+    e.preventDefault();
+    setError('');
+    setSaving(true);
+    const res = await fetch('/api/owner/create-consultant', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+      body: JSON.stringify(form),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      setError(data.error || 'Não foi possível criar a empresa.');
+      setSaving(false);
+      return;
+    }
+    toast.success('Empresa cadastrada.');
+    setForm(BLANK);
+    setShowForm(false);
+    await loadConsultants(session.access_token);
+    setSaving(false);
+  }
+
+  async function toggleActive(consultant) {
+    await fetch('/api/owner/update-consultant', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+      body: JSON.stringify({ consultant_id: consultant.id, active: !consultant.active }),
+    });
+    toast.success(consultant.active ? 'Acesso bloqueado.' : 'Acesso liberado.');
+    loadConsultants(session.access_token);
+  }
+
+  if (loading) return <Loading />;
+
+  return (
+    <Shell role="owner" profile={profile}>
+      <main className="page">
+        <div className="page-head" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', gap: 16, flexWrap: 'wrap' }}>
+          <div>
+            <p className="eyebrow">Painel do administrador</p>
+            <h1>Empresas</h1>
+            <p className="lede">Quem usa a plataforma e em que situação está cada conta.</p>
+          </div>
+          <button className="btn btn-primary" onClick={() => setShowForm(!showForm)}>
+            {showForm ? 'Cancelar' : 'Cadastrar empresa'}
+          </button>
+        </div>
+
+        {showForm && (
+          <form className="card" onSubmit={handleCreate} style={{ marginBottom: 24 }}>
+            <h3 style={{ marginBottom: 4 }}>Nova empresa</h3>
+            <p className="meta" style={{ marginBottom: 18 }}>
+              Contas criadas aqui já entram com assinatura ativa, sem período de teste.
+            </p>
+
+            {error && <div className="alert alert-error">{error}</div>}
+
+            <div className="grid-two">
+              <label className="field">
+                <span>Nome da empresa</span>
+                <input value={form.full_name} onChange={(e) => setForm({ ...form, full_name: e.target.value })} required />
+              </label>
+              <label className="field">
+                <span>E-mail de acesso</span>
+                <input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} required />
+              </label>
+              <label className="field">
+                <span>Senha provisória</span>
+                <input value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} minLength={6} required />
+                <span className="field-hint">Passe para o cliente trocar depois.</span>
+              </label>
+              <label className="field">
+                <span>Plano</span>
+                <select value={form.plan} onChange={(e) => setForm({ ...form, plan: e.target.value })}>
+                  <option value="normal">Normal</option>
+                  <option value="pro">PRO</option>
+                </select>
+              </label>
+              <label className="field">
+                <span>Como o negócio funciona</span>
+                <select value={form.pattern_type} onChange={(e) => setForm({ ...form, pattern_type: e.target.value })}>
+                  {Object.entries(PATTERN_TYPES).map(([key, p]) => <option key={key} value={key}>{p.label}</option>)}
+                </select>
+              </label>
+              <label className="field">
+                <span>Tipo de evento</span>
+                <select value={form.business_type} onChange={(e) => setForm({ ...form, business_type: e.target.value })}>
+                  {Object.entries(EVENT_TYPES).map(([key, t]) => <option key={key} value={key}>{t.label}</option>)}
+                </select>
+              </label>
+            </div>
+
+            <button type="submit" className="btn btn-primary" disabled={saving}>
+              {saving ? 'Cadastrando…' : 'Cadastrar empresa'}
+            </button>
+          </form>
+        )}
+
+        {consultants === null ? (
+          <p className="meta">Carregando empresas…</p>
+        ) : consultants.length === 0 ? (
+          <Empty
+            title="Nenhuma empresa ainda"
+            action={<button className="btn btn-primary" onClick={() => setShowForm(true)}>Cadastrar a primeira</button>}
+          >
+            Empresas aparecem aqui quando você as cadastra ou quando alguém se inscreve pelo site.
+          </Empty>
+        ) : (
+          <div className="card card-flush">
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>Empresa</th>
+                  <th>Plano</th>
+                  <th>Assinatura</th>
+                  <th>Acesso</th>
+                  <th />
+                </tr>
+              </thead>
+              <tbody>
+                {consultants.map((c) => {
+                  const sub = SUBSCRIPTION_META[c.subscription_status] || SUBSCRIPTION_META.canceled;
+                  return (
+                    <tr key={c.id}>
+                      <td>
+                        <div style={{ fontWeight: 500 }}>{c.full_name}</div>
+                        <div className="tiny">{c.email}</div>
+                      </td>
+                      <td>{c.plan === 'pro' ? 'PRO' : 'Normal'}</td>
+                      <td><span className={sub.className}>{sub.label}</span></td>
+                      <td>
+                        <span className={c.active ? 'badge badge-confirmed' : 'badge badge-neutral'}>
+                          {c.active ? 'Liberado' : 'Bloqueado'}
+                        </span>
+                      </td>
+                      <td style={{ textAlign: 'right' }}>
+                        <button className="btn btn-ghost" onClick={() => toggleActive(c)}>
+                          {c.active ? 'Bloquear' : 'Liberar'}
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </main>
+    </Shell>
+  );
+}
