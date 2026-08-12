@@ -60,7 +60,7 @@ export default function UsersPage() {
           <p className="lede">Todo mundo com acesso à plataforma: empresas e colaboradores.</p>
         </div>
 
-        <div className="card" style={{ marginBottom: 20, display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
+        <div className="card filter-bar" style={{ marginBottom: 20 }}>
           <input
             placeholder="Buscar por nome, e-mail, empresa ou papel…"
             value={search}

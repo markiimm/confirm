@@ -163,6 +163,42 @@ a:hover { color: #9c8ff8; }
 
 .field-hint { font-size: 12px; color: var(--text-muted); margin-top: 6px; }
 
+/* Barra de busca/filtros fora de um <form> (ex: telas de listagem) */
+.filter-bar { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
+
+.filter-bar input,
+.filter-bar select {
+  padding: 11px 13px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 15px;
+  transition: border-color 0.15s, box-shadow 0.15s, background 0.15s;
+}
+
+.filter-bar input:focus,
+.filter-bar select:focus {
+  outline: none;
+  border-color: var(--accent);
+  background: var(--surface-3);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.filter-bar input::placeholder { color: var(--text-muted); }
+
+.filter-bar select {
+  appearance: none;
+  background-image: linear-gradient(45deg, transparent 50%, var(--text-secondary) 50%),
+    linear-gradient(135deg, var(--text-secondary) 50%, transparent 50%);
+  background-position: calc(100% - 18px) 52%, calc(100% - 13px) 52%;
+  background-size: 5px 5px, 5px 5px;
+  background-repeat: no-repeat;
+  padding-right: 36px;
+  min-width: 160px;
+}
+
 /* ============================================
    Botões
    ============================================ */
