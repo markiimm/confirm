@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import { useProtectedPage } from '../../lib/useProtectedPage';
 import { EVENT_TYPES } from '../../lib/eventTypes';
 import { PATTERN_TYPES } from '../../lib/patternTypes';
@@ -18,6 +18,8 @@ export default function ConsultantsPage() {
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [expandedId, setExpandedId] = useState(null);
+  const [teams, setTeams] = useState({});
 
   async function loadConsultants(token) {
     const res = await fetch('/api/owner/consultants', { headers: { Authorization: `Bearer ${token}` } });
@@ -26,6 +28,17 @@ export default function ConsultantsPage() {
   }
 
   useEffect(() => { if (session) loadConsultants(session.access_token); }, [session]);
+
+  async function toggleTeam(consultantId) {
+    if (expandedId === consultantId) { setExpandedId(null); return; }
+    setExpandedId(consultantId);
+    if (teams[consultantId]) return;
+    const res = await fetch(`/api/owner/company-team?consultant_id=${consultantId}`, {
+      headers: { Authorization: `Bearer ${session.access_token}` },
+    });
+    const data = await res.json();
+    setTeams((prev) => ({ ...prev, [consultantId]: data.collaborators || [] }));
+  }
 
   async function handleCreate(e) {
     e.preventDefault();
@@ -139,6 +152,7 @@ export default function ConsultantsPage() {
             <table className="table">
               <thead>
                 <tr>
+                  <th />
                   <th>Empresa</th>
                   <th>Plano</th>
                   <th>Assinatura</th>
@@ -149,25 +163,65 @@ export default function ConsultantsPage() {
               <tbody>
                 {consultants.map((c) => {
                   const sub = SUBSCRIPTION_META[c.subscription_status] || SUBSCRIPTION_META.canceled;
+                  const isOpen = expandedId === c.id;
+                  const team = teams[c.id];
                   return (
-                    <tr key={c.id}>
-                      <td>
-                        <div style={{ fontWeight: 500 }}>{c.full_name}</div>
-                        <div className="tiny">{c.email}</div>
-                      </td>
-                      <td>{c.plan === 'pro' ? 'PRO' : 'Normal'}</td>
-                      <td><span className={sub.className}>{sub.label}</span></td>
-                      <td>
-                        <span className={c.active ? 'badge badge-confirmed' : 'badge badge-neutral'}>
-                          {c.active ? 'Liberado' : 'Bloqueado'}
-                        </span>
-                      </td>
-                      <td style={{ textAlign: 'right' }}>
-                        <button className="btn btn-ghost" onClick={() => toggleActive(c)}>
-                          {c.active ? 'Bloquear' : 'Liberar'}
-                        </button>
-                      </td>
-                    </tr>
+                    <Fragment key={c.id}>
+                      <tr>
+                        <td style={{ width: 32 }}>
+                          <button
+                            className="btn btn-ghost"
+                            style={{ padding: '2px 8px' }}
+                            onClick={() => toggleTeam(c.id)}
+                            aria-label="Ver colaboradores"
+                          >
+                            {isOpen ? '▾' : '▸'}
+                          </button>
+                        </td>
+                        <td>
+                          <div style={{ fontWeight: 500 }}>{c.full_name}</div>
+                          <div className="tiny">{c.email}</div>
+                        </td>
+                        <td>{c.plan === 'pro' ? 'PRO' : 'Normal'}</td>
+                        <td><span className={sub.className}>{sub.label}</span></td>
+                        <td>
+                          <span className={c.active ? 'badge badge-confirmed' : 'badge badge-neutral'}>
+                            {c.active ? 'Liberado' : 'Bloqueado'}
+                          </span>
+                        </td>
+                        <td style={{ textAlign: 'right' }}>
+                          <button className="btn btn-ghost" onClick={() => toggleActive(c)}>
+                            {c.active ? 'Bloquear' : 'Liberar'}
+                          </button>
+                        </td>
+                      </tr>
+                      {isOpen && (
+                        <tr>
+                          <td />
+                          <td colSpan={5} style={{ background: 'var(--bg-soft, rgba(255,255,255,0.02))', padding: '10px 14px' }}>
+                            {team === undefined ? (
+                              <p className="meta">Carregando colaboradores…</p>
+                            ) : team.length === 0 ? (
+                              <p className="meta">Essa empresa ainda não tem colaboradores.</p>
+                            ) : (
+                              <div style={{ display: 'grid', gap: 6 }}>
+                                {team.map((m) => (
+                                  <div key={m.id} style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+                                    <div>
+                                      <span style={{ fontWeight: 500 }}>{m.full_name}</span>{' '}
+                                      <span className="tiny">{m.email}</span>
+                                    </div>
+                                    <span className={m.active ? 'badge badge-confirmed' : 'badge badge-neutral'}>
+                                      {m.active ? 'Liberado' : 'Bloqueado'}
+                                    </span>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>
                   );
                 })}
               </tbody>

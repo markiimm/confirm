@@ -2,11 +2,20 @@ import { useEffect, useMemo, useState } from 'react';
 import { useProtectedPage } from '../../lib/useProtectedPage';
 import { Shell, Loading, Empty, ROLE_META } from '../../components/ui';
 
+// Ignora acento e caixa, pra "joão" achar "Joao" e vice-versa.
+function normalize(text) {
+  return (text || '')
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+    .toLowerCase();
+}
+
 export default function UsersPage() {
   const { session, profile, loading } = useProtectedPage('owner');
   const [users, setUsers] = useState(null);
   const [search, setSearch] = useState('');
   const [roleFilter, setRoleFilter] = useState('all');
+  const [statusFilter, setStatusFilter] = useState('all');
 
   useEffect(() => {
     if (!session) return;
@@ -17,17 +26,28 @@ export default function UsersPage() {
 
   const filtered = useMemo(() => {
     if (!users) return [];
-    const term = search.trim().toLowerCase();
+    const term = normalize(search.trim());
     return users.filter((u) => {
       const matchesRole = roleFilter === 'all' || u.role === roleFilter;
+      const matchesStatus =
+        statusFilter === 'all' || (statusFilter === 'active' ? u.active : !u.active);
       const matchesTerm =
         !term ||
-        u.full_name.toLowerCase().includes(term) ||
-        u.email.toLowerCase().includes(term) ||
-        (u.company_name || '').toLowerCase().includes(term);
-      return matchesRole && matchesTerm;
+        normalize(u.full_name).includes(term) ||
+        normalize(u.email).includes(term) ||
+        normalize(u.company_name).includes(term) ||
+        normalize(ROLE_META[u.role]?.label).includes(term);
+      return matchesRole && matchesStatus && matchesTerm;
     });
-  }, [users, search, roleFilter]);
+  }, [users, search, roleFilter, statusFilter]);
+
+  const hasFilters = search.trim() !== '' || roleFilter !== 'all' || statusFilter !== 'all';
+
+  function clearFilters() {
+    setSearch('');
+    setRoleFilter('all');
+    setStatusFilter('all');
+  }
 
   if (loading) return <Loading />;
 
@@ -40,9 +60,9 @@ export default function UsersPage() {
           <p className="lede">Todo mundo com acesso à plataforma: empresas e colaboradores.</p>
         </div>
 
-        <div className="card" style={{ marginBottom: 20, display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+        <div className="card" style={{ marginBottom: 20, display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
           <input
-            placeholder="Buscar por nome, e-mail ou empresa…"
+            placeholder="Buscar por nome, e-mail, empresa ou papel…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             style={{ flex: 1, minWidth: 220 }}
@@ -53,13 +73,27 @@ export default function UsersPage() {
             <option value="consultant">Empresas (titulares)</option>
             <option value="collaborator">Colaboradores</option>
           </select>
+          <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+            <option value="all">Todos os acessos</option>
+            <option value="active">Liberados</option>
+            <option value="blocked">Bloqueados</option>
+          </select>
+          {hasFilters && (
+            <button className="btn btn-ghost" onClick={clearFilters}>Limpar filtros</button>
+          )}
         </div>
+
+        {users !== null && (
+          <p className="meta" style={{ marginBottom: 12 }}>
+            {filtered.length} de {users.length} usuário{users.length === 1 ? '' : 's'}
+          </p>
+        )}
 
         {users === null ? (
           <p className="meta">Carregando usuários…</p>
         ) : filtered.length === 0 ? (
           <Empty title="Nenhum usuário encontrado">
-            Ajuste a busca ou o filtro de papel.
+            Ajuste a busca ou os filtros.
           </Empty>
         ) : (
           <div className="card card-flush">
