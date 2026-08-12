@@ -20,6 +20,8 @@ export default function EventDetailPage() {
   const [savingMessage, setSavingMessage] = useState(false);
   const [busyId, setBusyId] = useState(null);
   const [bulkBusy, setBulkBusy] = useState(false);
+  const [lastUpdated, setLastUpdated] = useState(null);
+  const [refreshing, setRefreshing] = useState(false);
 
   async function load() {
     if (!session || !id) return;
@@ -29,10 +31,23 @@ export default function EventDetailPage() {
     if (!res.ok) { setData(false); return; }
     const json = await res.json();
     setData(json);
-    setMessageDraft(json.event.invite_message_template || '');
+    setMessageDraft((prev) => (editingMessage ? prev : json.event.invite_message_template || ''));
+    setLastUpdated(new Date());
+  }
+
+  async function handleRefresh() {
+    setRefreshing(true);
+    await load();
+    setRefreshing(false);
   }
 
   useEffect(() => { load(); }, [session, id]);
+
+  useEffect(() => {
+    if (!session || !id) return;
+    const interval = setInterval(load, 20000);
+    return () => clearInterval(interval);
+  }, [session, id]);
 
   async function patchEvent(body, successMsg) {
     const res = await fetch('/api/consultant/event-detail', {
@@ -169,8 +184,16 @@ export default function EventDetailPage() {
               {' · '}{guests.length} convidado{guests.length === 1 ? '' : 's'}
               {companions > 0 && ` · ${counts.confirmed + companions} pessoas esperadas`}
             </p>
+            {lastUpdated && (
+              <p className="tiny" style={{ marginTop: 4 }}>
+                Atualizado às {lastUpdated.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+              </p>
+            )}
           </div>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <button className="btn btn-secondary" onClick={handleRefresh} disabled={refreshing}>
+              {refreshing ? 'Atualizando…' : '↻ Atualizar'}
+            </button>
             <a href={`/upload?event_id=${event.id}`} className="btn btn-secondary">Enviar planilha</a>
             {guests.length > 0 && (
               <a href={`/api/export-guests?event_id=${event.id}`} className="btn btn-ghost">Baixar lista</a>
@@ -359,7 +382,7 @@ export default function EventDetailPage() {
                               <div className="tiny">{g.phone}</div>
                               {g.notes && (
                                 <div className="tiny" style={{ marginTop: 4, color: 'var(--text-secondary)', fontStyle: 'italic' }}>
-                                  “{g.notes}”
+                                  "{g.notes}"
                                 </div>
                               )}
                             </td>

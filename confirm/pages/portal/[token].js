@@ -7,14 +7,32 @@ export default function ClientPortalPage() {
   const { token } = router.query;
   const [data, setData] = useState(null);
   const [filter, setFilter] = useState('all');
+  const [lastUpdated, setLastUpdated] = useState(null);
+  const [refreshing, setRefreshing] = useState(false);
+
+  function loadPortal() {
+    return fetch(`/api/portal?token=${token}`)
+      .then((r) => (r.ok ? r.json() : Promise.reject()))
+      .then((json) => { setData(json); setLastUpdated(new Date()); })
+      .catch(() => setData(false));
+  }
 
   useEffect(() => {
     if (!token) return;
-    fetch(`/api/portal?token=${token}`)
-      .then((r) => (r.ok ? r.json() : Promise.reject()))
-      .then(setData)
-      .catch(() => setData(false));
+    loadPortal();
   }, [token]);
+
+  useEffect(() => {
+    if (!token) return;
+    const interval = setInterval(loadPortal, 20000);
+    return () => clearInterval(interval);
+  }, [token]);
+
+  async function handleRefresh() {
+    setRefreshing(true);
+    await loadPortal();
+    setRefreshing(false);
+  }
 
   if (data === null) {
     return (
@@ -53,12 +71,22 @@ export default function ClientPortalPage() {
       </header>
 
       <main className="page">
-        <div className="page-head">
-          <p className="eyebrow">Lista de convidados</p>
-          <h1>{event.name}</h1>
-          <p className="lede">
-            {new Date(event.date).toLocaleDateString('pt-BR', { day: 'numeric', month: 'long', year: 'numeric' })}
-          </p>
+        <div className="page-head head-row">
+          <div>
+            <p className="eyebrow">Lista de convidados</p>
+            <h1>{event.name}</h1>
+            <p className="lede">
+              {new Date(event.date).toLocaleDateString('pt-BR', { day: 'numeric', month: 'long', year: 'numeric' })}
+            </p>
+            {lastUpdated && (
+              <p className="tiny" style={{ marginTop: 4 }}>
+                Atualizado às {lastUpdated.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+              </p>
+            )}
+          </div>
+          <button className="btn btn-secondary" onClick={handleRefresh} disabled={refreshing}>
+            {refreshing ? 'Atualizando…' : '↻ Atualizar'}
+          </button>
         </div>
 
         {totals.guests === 0 ? (
