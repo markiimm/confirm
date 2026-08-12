@@ -20,6 +20,10 @@ export default function ConsultantsPage() {
   const [error, setError] = useState('');
   const [expandedId, setExpandedId] = useState(null);
   const [teams, setTeams] = useState({});
+  const [editingId, setEditingId] = useState(null);
+  const [editForm, setEditForm] = useState(null);
+  const [editSaving, setEditSaving] = useState(false);
+  const [editError, setEditError] = useState('');
 
   async function loadConsultants(token) {
     const res = await fetch('/api/owner/consultants', { headers: { Authorization: `Bearer ${token}` } });
@@ -63,12 +67,45 @@ export default function ConsultantsPage() {
   }
 
   async function toggleActive(consultant) {
-    await fetch('/api/owner/update-consultant', {
+    await fetch('/api/owner/update-user', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
-      body: JSON.stringify({ consultant_id: consultant.id, active: !consultant.active }),
+      body: JSON.stringify({ id: consultant.id, active: !consultant.active }),
     });
     toast.success(consultant.active ? 'Acesso bloqueado.' : 'Acesso liberado.');
+    loadConsultants(session.access_token);
+  }
+
+  function startEdit(c) {
+    if (editingId === c.id) { setEditingId(null); return; }
+    setEditError('');
+    setEditingId(c.id);
+    setEditForm({
+      full_name: c.full_name,
+      email: c.email,
+      password: '',
+      plan: c.plan,
+      pattern_type: c.pattern_type,
+      business_type: c.business_type,
+    });
+  }
+
+  async function handleEditSubmit(e) {
+    e.preventDefault();
+    setEditError('');
+    setEditSaving(true);
+    const body = { id: editingId, ...editForm };
+    if (!body.password) delete body.password;
+    const res = await fetch('/api/owner/update-user', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json();
+    setEditSaving(false);
+    if (!res.ok) { setEditError(data.error || 'Não foi possível salvar.'); return; }
+    toast.success('Empresa atualizada.');
+    setEditingId(null);
     loadConsultants(session.access_token);
   }
 
@@ -189,12 +226,83 @@ export default function ConsultantsPage() {
                             {c.active ? 'Liberado' : 'Bloqueado'}
                           </span>
                         </td>
-                        <td style={{ textAlign: 'right' }}>
+                        <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                          <button className="btn btn-ghost" onClick={() => startEdit(c)}>
+                            {editingId === c.id ? 'Cancelar' : 'Editar'}
+                          </button>{' '}
                           <button className="btn btn-ghost" onClick={() => toggleActive(c)}>
                             {c.active ? 'Bloquear' : 'Liberar'}
                           </button>
                         </td>
                       </tr>
+                      {editingId === c.id && (
+                        <tr>
+                          <td />
+                          <td colSpan={5} style={{ padding: '14px' }}>
+                            <form onSubmit={handleEditSubmit} style={{ display: 'grid', gap: 12 }}>
+                              {editError && <div className="alert alert-error">{editError}</div>}
+                              <div className="grid-two">
+                                <label className="field" style={{ margin: 0 }}>
+                                  <span>Nome da empresa</span>
+                                  <input
+                                    value={editForm.full_name}
+                                    onChange={(e) => setEditForm({ ...editForm, full_name: e.target.value })}
+                                    required
+                                  />
+                                </label>
+                                <label className="field" style={{ margin: 0 }}>
+                                  <span>E-mail de acesso</span>
+                                  <input
+                                    type="email"
+                                    value={editForm.email}
+                                    onChange={(e) => setEditForm({ ...editForm, email: e.target.value })}
+                                    required
+                                  />
+                                </label>
+                                <label className="field" style={{ margin: 0 }}>
+                                  <span>Nova senha</span>
+                                  <input
+                                    value={editForm.password}
+                                    onChange={(e) => setEditForm({ ...editForm, password: e.target.value })}
+                                    placeholder="Deixe em branco para manter"
+                                    minLength={6}
+                                  />
+                                </label>
+                                <label className="field" style={{ margin: 0 }}>
+                                  <span>Plano</span>
+                                  <select value={editForm.plan} onChange={(e) => setEditForm({ ...editForm, plan: e.target.value })}>
+                                    <option value="normal">Normal</option>
+                                    <option value="pro">PRO</option>
+                                  </select>
+                                </label>
+                                <label className="field" style={{ margin: 0 }}>
+                                  <span>Como o negócio funciona</span>
+                                  <select
+                                    value={editForm.pattern_type}
+                                    onChange={(e) => setEditForm({ ...editForm, pattern_type: e.target.value })}
+                                  >
+                                    {Object.entries(PATTERN_TYPES).map(([key, p]) => <option key={key} value={key}>{p.label}</option>)}
+                                  </select>
+                                </label>
+                                <label className="field" style={{ margin: 0 }}>
+                                  <span>Tipo de evento</span>
+                                  <select
+                                    value={editForm.business_type}
+                                    onChange={(e) => setEditForm({ ...editForm, business_type: e.target.value })}
+                                  >
+                                    {Object.entries(EVENT_TYPES).map(([key, t]) => <option key={key} value={key}>{t.label}</option>)}
+                                  </select>
+                                </label>
+                              </div>
+                              <div>
+                                <button type="submit" className="btn btn-primary" disabled={editSaving}>
+                                  {editSaving ? 'Salvando…' : 'Salvar alterações'}
+                                </button>
+                              </div>
+                            </form>
+                          </td>
+                        </tr>
+                      )}
                       {isOpen && (
                         <tr>
                           <td />
