@@ -120,3 +120,93 @@ create policy "billing_owner_select_all" on billing_events for select using (is_
 -- Observação: as rotas /api usam a service role key (que ignora RLS) e
 -- fazem a checagem de permissão manualmente no código — essas políticas
 -- são uma segunda camada de proteção, não a única.
+
+-- ============================================
+-- Suporte (chamados entre empresas/colaboradores e o dono da plataforma)
+-- ============================================
+create table if not exists support_tickets (
+  id uuid primary key default gen_random_uuid(),
+  account_id uuid references profiles(id) on delete cascade, -- empresa dona do chamado
+  created_by uuid references profiles(id) on delete set null, -- quem abriu (titular ou colaborador)
+  subject text not null,
+  status text default 'open', -- 'open' | 'closed'
+  created_at timestamptz default now(),
+  updated_at timestamptz default now()
+);
+
+create table if not exists support_messages (
+  id uuid primary key default gen_random_uuid(),
+  ticket_id uuid references support_tickets(id) on delete cascade,
+  sender_id uuid references profiles(id) on delete set null,
+  sender_role text, -- papel de quem enviou: 'owner' | 'consultant' | 'collaborator'
+  body text not null,
+  created_at timestamptz default now()
+);
+
+alter table support_tickets enable row level security;
+alter table support_messages enable row level security;
+
+create policy "support_tickets_account_select" on support_tickets for select using (account_id = account_id());
+create policy "support_tickets_owner_select_all" on support_tickets for select using (is_owner());
+
+create policy "support_messages_account_select" on support_messages for select using (
+  ticket_id in (select id from support_tickets t where t.account_id = account_id())
+);
+create policy "support_messages_owner_select_all" on support_messages for select using (is_owner());
+
+-- ============================================
+-- Log de auditoria (ações administrativas do dono da plataforma)
+-- ============================================
+create table if not exists audit_log (
+  id uuid primary key default gen_random_uuid(),
+  actor_id uuid references profiles(id) on delete set null, -- quem fez a ação
+  action text not null,   -- ex: 'consultant.create', 'user.update', 'team.remove'
+  target_id uuid,         -- id do registro afetado, quando existir
+  details jsonb,          -- payload livre com o que mudou
+  created_at timestamptz default now()
+);
+
+alter table audit_log enable row level security;
+create policy "audit_log_owner_select" on audit_log for select using (is_owner());
+
+-- ============================================
+-- Templates de mensagem salvos (reutilizáveis entre eventos da mesma empresa)
+-- ============================================
+create table if not exists message_templates (
+  id uuid primary key default gen_random_uuid(),
+  account_id uuid references profiles(id) on delete cascade,
+  name text not null,
+  body text not null,
+  created_at timestamptz default now()
+);
+
+alter table message_templates enable row level security;
+create policy "message_templates_account_select" on message_templates for select using (account_id = account_id());
+create policy "message_templates_account_manage" on message_templates for all using (account_id = account_id());
+create policy "message_templates_owner_select_all" on message_templates for select using (is_owner());
+
+-- ============================================
+-- Colaboradores: modo somente leitura e acesso restrito por evento
+-- ============================================
+
+-- Só se aplica a role='collaborator'; titular e owner sempre podem editar
+-- (a checagem definitiva é sempre feita no código da API, isso é só o dado).
+alter table profiles add column if not exists can_edit boolean default true;
+
+-- Se o colaborador não tiver nenhuma linha aqui, ele continua vendo todos
+-- os eventos da empresa (comportamento atual, sem quebrar quem já existe).
+-- Assim que a consultora atribuir ao menos um evento a ele, passa a ver
+-- só os eventos atribuídos.
+create table if not exists event_access (
+  id uuid primary key default gen_random_uuid(),
+  event_id uuid references events(id) on delete cascade,
+  collaborator_id uuid references profiles(id) on delete cascade,
+  created_at timestamptz default now(),
+  unique (event_id, collaborator_id)
+);
+
+alter table event_access enable row level security;
+create policy "event_access_account_select" on event_access for select using (
+  event_id in (select id from events where consultant_id = account_id())
+);
+create policy "event_access_owner_select_all" on event_access for select using (is_owner());

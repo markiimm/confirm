@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
 import { useProtectedPage } from '../../../lib/useProtectedPage';
 import { buildInviteMessage } from '../../../lib/eventTypes';
-import { Shell, Loading, Empty, Tally, STATUS_META } from '../../../components/ui';
+import { Shell, Loading, Empty, Tally, STATUS_META, canEdit } from '../../../components/ui';
 import { useToast } from '../../../components/Toast';
 
 export default function EventDetailPage() {
@@ -22,6 +22,8 @@ export default function EventDetailPage() {
   const [bulkBusy, setBulkBusy] = useState(false);
   const [lastUpdated, setLastUpdated] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [templates, setTemplates] = useState(null);
+  const [savingTemplate, setSavingTemplate] = useState(false);
 
   async function load() {
     if (!session || !id) return;
@@ -42,6 +44,42 @@ export default function EventDetailPage() {
   }
 
   useEffect(() => { load(); }, [session, id]);
+
+  async function loadTemplates() {
+    if (!session) return;
+    const res = await fetch('/api/consultant/message-templates', {
+      headers: { Authorization: `Bearer ${session.access_token}` },
+    });
+    const json = await res.json();
+    setTemplates(json.templates || []);
+  }
+
+  useEffect(() => { loadTemplates(); }, [session]);
+
+  async function saveAsTemplate() {
+    const name = window.prompt('Nome para este template (ex: "Convite formal"):');
+    if (!name) return;
+    setSavingTemplate(true);
+    const res = await fetch('/api/consultant/message-templates', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+      body: JSON.stringify({ name, body: messageDraft }),
+    });
+    setSavingTemplate(false);
+    if (!res.ok) { toast.error('Não foi possível salvar o template.'); return; }
+    toast.success('Template salvo.');
+    loadTemplates();
+  }
+
+  async function deleteTemplate(templateId) {
+    if (!window.confirm('Remover este template?')) return;
+    await fetch('/api/consultant/message-templates', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+      body: JSON.stringify({ id: templateId }),
+    });
+    loadTemplates();
+  }
 
   useEffect(() => {
     if (!session || !id) return;
@@ -95,6 +133,20 @@ export default function EventDetailPage() {
     load();
   }
 
+  async function resendOne(guestId) {
+    setBusyId(guestId);
+    const res = await fetch('/api/consultant/resend-invite', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+      body: JSON.stringify({ guest_id: guestId }),
+    });
+    const json = await res.json();
+    setBusyId(null);
+    if (!res.ok || json.failures?.length) { toast.error('Não foi possível reenviar.'); return; }
+    toast.success('Mensagem reenviada.');
+    load();
+  }
+
   async function bulkResend() {
     setBulkBusy(true);
     const res = await fetch('/api/consultant/resend-invite', {
@@ -138,6 +190,7 @@ export default function EventDetailPage() {
     );
   }
 
+  const editable = canEdit(profile);
   const { event, guests } = data;
   const counts = {
     confirmed: guests.filter((g) => g.confirmation_status === 'confirmed').length,
@@ -194,7 +247,9 @@ export default function EventDetailPage() {
             <button className="btn btn-secondary" onClick={handleRefresh} disabled={refreshing}>
               {refreshing ? 'Atualizando…' : '↻ Atualizar'}
             </button>
-            <a href={`/upload?event_id=${event.id}`} className="btn btn-secondary">Enviar planilha</a>
+            {editable && (
+              <a href={`/upload?event_id=${event.id}`} className="btn btn-secondary">Enviar planilha</a>
+            )}
             {guests.length > 0 && (
               <a href={`/api/export-guests?event_id=${event.id}`} className="btn btn-ghost">Baixar lista</a>
             )}
@@ -229,22 +284,24 @@ export default function EventDetailPage() {
                 >
                   Copiar link
                 </button>
-                <button
-                  className="btn btn-ghost"
-                  onClick={() => {
-                    if (window.confirm('Desativar o link? Quem já tem o endereço perde o acesso.')) {
-                      patchEvent({ revoke_portal_token: true }, 'Link desativado.');
-                    }
-                  }}
-                >
-                  Desativar
-                </button>
+                {editable && (
+                  <button
+                    className="btn btn-ghost"
+                    onClick={() => {
+                      if (window.confirm('Desativar o link? Quem já tem o endereço perde o acesso.')) {
+                        patchEvent({ revoke_portal_token: true }, 'Link desativado.');
+                      }
+                    }}
+                  >
+                    Desativar
+                  </button>
+                )}
               </div>
-            ) : (
+            ) : editable ? (
               <button className="btn btn-primary" onClick={() => patchEvent({ generate_portal_token: true }, 'Link criado.')}>
                 Gerar link
               </button>
-            )}
+            ) : null}
           </div>
           {portalUrl && (
             <div className="alert alert-info" style={{ marginTop: 14, marginBottom: 0, wordBreak: 'break-all' }}>
@@ -262,13 +319,42 @@ export default function EventDetailPage() {
                 {event.invite_message_template ? 'Personalizada para este evento.' : `Usando o texto padrão de ${event.event_type}.`}
               </p>
             </div>
-            <button className="btn btn-ghost" onClick={() => setEditingMessage(!editingMessage)}>
-              {editingMessage ? 'Cancelar' : 'Editar mensagem'}
-            </button>
+            {editable && (
+              <button className="btn btn-ghost" onClick={() => setEditingMessage(!editingMessage)}>
+                {editingMessage ? 'Cancelar' : 'Editar mensagem'}
+              </button>
+            )}
           </div>
 
-          {editingMessage && (
+          {editingMessage && editable && (
             <div style={{ marginTop: 4 }}>
+              {templates?.length > 0 && (
+                <div style={{ marginBottom: 14 }}>
+                  <span className="field-hint" style={{ display: 'block', marginBottom: 6 }}>Templates salvos</span>
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                    {templates.map((t) => (
+                      <span key={t.id} className="badge badge-neutral" style={{ gap: 8 }}>
+                        <button
+                          type="button"
+                          onClick={() => setMessageDraft(t.body)}
+                          style={{ background: 'none', border: 0, color: 'inherit', cursor: 'pointer', padding: 0, font: 'inherit' }}
+                        >
+                          {t.name}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => deleteTemplate(t.id)}
+                          title="Remover template"
+                          style={{ background: 'none', border: 0, color: 'inherit', cursor: 'pointer', padding: 0, font: 'inherit' }}
+                        >
+                          ×
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               <label className="field">
                 <span>Texto enviado ao convidado</span>
                 <textarea rows={4} value={messageDraft} onChange={(e) => setMessageDraft(e.target.value)} />
@@ -282,9 +368,19 @@ export default function EventDetailPage() {
                 </strong>
                 {preview}
               </div>
-              <button className="btn btn-primary" onClick={saveMessage} disabled={savingMessage}>
-                {savingMessage ? 'Salvando…' : 'Salvar mensagem'}
-              </button>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button className="btn btn-primary" onClick={saveMessage} disabled={savingMessage}>
+                  {savingMessage ? 'Salvando…' : 'Salvar mensagem'}
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={saveAsTemplate}
+                  disabled={savingTemplate || !messageDraft.trim()}
+                >
+                  {savingTemplate ? 'Salvando…' : 'Salvar como template'}
+                </button>
+              </div>
             </div>
           )}
         </section>
@@ -305,9 +401,9 @@ export default function EventDetailPage() {
           {guests.length === 0 ? (
             <Empty
               title="Nenhum convidado ainda"
-              action={<a href={`/upload?event_id=${event.id}`} className="btn btn-primary">Enviar planilha</a>}
+              action={editable ? <a href={`/upload?event_id=${event.id}`} className="btn btn-primary">Enviar planilha</a> : null}
             >
-              Suba a lista de convidados para começar a enviar os convites.
+              {editable ? 'Suba a lista de convidados para começar a enviar os convites.' : 'Ainda não há convidados cadastrados neste evento.'}
             </Empty>
           ) : (
             <>
@@ -324,7 +420,7 @@ export default function EventDetailPage() {
                 }}
               />
 
-              {selected.length > 0 && (
+              {selected.length > 0 && editable && (
                 <div className="alert alert-info" style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
                   <strong>{selected.length} selecionado{selected.length > 1 ? 's' : ''}</strong>
                   <button className="btn btn-secondary" onClick={bulkResend} disabled={bulkBusy}>
@@ -342,9 +438,11 @@ export default function EventDetailPage() {
                   <table className="table">
                     <thead>
                       <tr>
-                        <th style={{ width: 36 }}>
-                          <input type="checkbox" checked={allVisibleSelected} onChange={toggleAllVisible} aria-label="Selecionar todos" />
-                        </th>
+                        {editable && (
+                          <th style={{ width: 36 }}>
+                            <input type="checkbox" checked={allVisibleSelected} onChange={toggleAllVisible} aria-label="Selecionar todos" />
+                          </th>
+                        )}
                         <th>Convidado</th>
                         <th>Status</th>
                         <th />
@@ -356,20 +454,22 @@ export default function EventDetailPage() {
                         const busy = busyId === g.id;
                         return (
                           <tr key={g.id}>
-                            <td>
-                              <input
-                                type="checkbox"
-                                checked={selected.includes(g.id)}
-                                onChange={() =>
-                                  setSelected(
-                                    selected.includes(g.id)
-                                      ? selected.filter((x) => x !== g.id)
-                                      : [...selected, g.id]
-                                  )
-                                }
-                                aria-label={`Selecionar ${g.full_name}`}
-                              />
-                            </td>
+                            {editable && (
+                              <td>
+                                <input
+                                  type="checkbox"
+                                  checked={selected.includes(g.id)}
+                                  onChange={() =>
+                                    setSelected(
+                                      selected.includes(g.id)
+                                        ? selected.filter((x) => x !== g.id)
+                                        : [...selected, g.id]
+                                    )
+                                  }
+                                  aria-label={`Selecionar ${g.full_name}`}
+                                />
+                              </td>
+                            )}
                             <td>
                               <div style={{ fontWeight: 500 }}>
                                 {g.full_name}
@@ -388,18 +488,23 @@ export default function EventDetailPage() {
                             </td>
                             <td><span className={meta.className}>{meta.label}</span></td>
                             <td>
-                              <div className="guest-row-actions">
-                                {g.confirmation_status !== 'confirmed' && (
-                                  <button className="icon-btn" title="Marcar como confirmado" disabled={busy} onClick={() => setGuestStatus(g.id, 'confirmed')}>✓</button>
-                                )}
-                                {g.confirmation_status !== 'declined' && (
-                                  <button className="icon-btn" title="Marcar como não vai" disabled={busy} onClick={() => setGuestStatus(g.id, 'declined')}>✕</button>
-                                )}
-                                {g.confirmation_status !== 'pending' && (
-                                  <button className="icon-btn" title="Voltar para pendente" disabled={busy} onClick={() => setGuestStatus(g.id, 'pending')}>↺</button>
-                                )}
-                                <button className="icon-btn is-danger" title="Remover" disabled={busy} onClick={() => removeGuest(g.id, g.full_name)}>🗑</button>
-                              </div>
+                              {editable ? (
+                                <div className="guest-row-actions">
+                                  {g.confirmation_status !== 'confirmed' && (
+                                    <button className="icon-btn" title="Marcar como confirmado" disabled={busy} onClick={() => setGuestStatus(g.id, 'confirmed')}>✓</button>
+                                  )}
+                                  {g.confirmation_status !== 'declined' && (
+                                    <button className="icon-btn" title="Marcar como não vai" disabled={busy} onClick={() => setGuestStatus(g.id, 'declined')}>✕</button>
+                                  )}
+                                  {g.confirmation_status !== 'pending' && (
+                                    <button className="icon-btn" title="Voltar para pendente" disabled={busy} onClick={() => setGuestStatus(g.id, 'pending')}>↺</button>
+                                  )}
+                                  <button className="icon-btn" title="Reenviar mensagem" disabled={busy} onClick={() => resendOne(g.id)}>✉</button>
+                                  <button className="icon-btn is-danger" title="Remover" disabled={busy} onClick={() => removeGuest(g.id, g.full_name)}>🗑</button>
+                                </div>
+                              ) : (
+                                <span className="tiny">Somente leitura</span>
+                              )}
                             </td>
                           </tr>
                         );

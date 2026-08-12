@@ -1,5 +1,6 @@
 import { supabaseAdmin } from '../../../lib/supabase';
 import { getAuthedProfile } from '../../../lib/requireAuth';
+import { logAction } from '../../../lib/auditLog';
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).end();
@@ -28,6 +29,8 @@ export default async function handler(req, res) {
     subscription_status: 'active',
   });
   if (profileError) return res.status(500).json({ error: profileError.message });
+
+  await logAction(profile.id, 'consultant.create', created.user.id, { full_name, email, plan: plan || 'normal' });
 
   res.status(200).json({ id: created.user.id });
 }

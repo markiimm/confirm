@@ -1,12 +1,14 @@
 import { supabaseAdmin } from '../../../lib/supabase';
-import { getAuthedProfile, canManageEvents } from '../../../lib/requireAuth';
+import { getAuthedProfile, canEditEvents, getAllowedEventIds, isEventAllowed } from '../../../lib/requireAuth';
 import { sendTemplateMessage } from '../../../lib/whatsapp';
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).end();
 
   const profile = await getAuthedProfile(req);
-  if (!canManageEvents(profile)) return res.status(403).json({ error: 'Acesso negado' });
+  if (!canEditEvents(profile)) return res.status(403).json({ error: 'Acesso negado' });
+
+  const allowedIds = await getAllowedEventIds(profile);
 
   // Aceita um id ou vários (ação em lote)
   const { guest_id, guest_ids } = req.body;
@@ -22,6 +24,7 @@ export default async function handler(req, res) {
       .eq('id', id)
       .single();
     if (!guest || guest.events.consultant_id !== profile.account_id) continue;
+    if (!isEventAllowed(allowedIds, guest.event_id)) continue;
 
     try {
       await sendTemplateMessage(guest.phone, 'lembrete_confirmacao', [guest.full_name]);

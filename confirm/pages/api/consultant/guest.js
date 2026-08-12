@@ -1,23 +1,26 @@
 import { supabaseAdmin } from '../../../lib/supabase';
-import { getAuthedProfile, canManageEvents } from '../../../lib/requireAuth';
+import { getAuthedProfile, canEditEvents, getAllowedEventIds, isEventAllowed } from '../../../lib/requireAuth';
 
-async function guestBelongsToAccount(guestId, accountId) {
+async function guestBelongsToAccount(guestId, accountId, allowedIds) {
   const { data: guest } = await supabaseAdmin
     .from('guests')
     .select('*, events!inner(consultant_id)')
     .eq('id', guestId)
     .single();
   if (!guest || guest.events.consultant_id !== accountId) return null;
+  if (!isEventAllowed(allowedIds, guest.event_id)) return null;
   return guest;
 }
 
 export default async function handler(req, res) {
   const profile = await getAuthedProfile(req);
-  if (!canManageEvents(profile)) return res.status(403).json({ error: 'Acesso negado' });
+  if (!canEditEvents(profile)) return res.status(403).json({ error: 'Acesso negado' });
+
+  const allowedIds = await getAllowedEventIds(profile);
 
   if (req.method === 'PATCH') {
     const { guest_id, confirmation_status, notes, companions } = req.body;
-    const guest = await guestBelongsToAccount(guest_id, profile.account_id);
+    const guest = await guestBelongsToAccount(guest_id, profile.account_id, allowedIds);
     if (!guest) return res.status(404).json({ error: 'Convidado não encontrado' });
 
     const updates = {};
@@ -52,7 +55,7 @@ export default async function handler(req, res) {
 
     let removed = 0;
     for (const id of ids) {
-      const guest = await guestBelongsToAccount(id, profile.account_id);
+      const guest = await guestBelongsToAccount(id, profile.account_id, allowedIds);
       if (!guest) continue;
       const { error } = await supabaseAdmin.from('guests').delete().eq('id', id);
       if (!error) removed++;

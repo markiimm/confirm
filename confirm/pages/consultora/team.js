@@ -1,9 +1,9 @@
-import { useEffect, useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import { useProtectedPage } from '../../lib/useProtectedPage';
 import { Shell, Loading, Empty } from '../../components/ui';
 import { useToast } from '../../components/Toast';
 
-const BLANK = { full_name: '', email: '', password: '' };
+const BLANK = { full_name: '', email: '', password: '', can_edit: true };
 
 export default function TeamPage() {
   const { session, profile, loading } = useProtectedPage('consultant');
@@ -13,6 +13,8 @@ export default function TeamPage() {
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [expandedId, setExpandedId] = useState(null);
+  const [access, setAccess] = useState({});
 
   async function load() {
     if (!session) return;
@@ -41,6 +43,39 @@ export default function TeamPage() {
     setForm(BLANK);
     setShowForm(false);
     load();
+  }
+
+  async function toggleCanEdit(member) {
+    await fetch('/api/consultant/team', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+      body: JSON.stringify({ member_id: member.id, can_edit: !member.can_edit }),
+    });
+    toast.success(member.can_edit ? 'Agora só visualiza.' : 'Agora pode editar.');
+    load();
+  }
+
+  async function loadAccess(memberId) {
+    const res = await fetch(`/api/consultant/collaborator-events?member_id=${memberId}`, {
+      headers: { Authorization: `Bearer ${session.access_token}` },
+    });
+    const data = await res.json();
+    setAccess((prev) => ({ ...prev, [memberId]: data }));
+  }
+
+  async function toggleExpand(memberId) {
+    if (expandedId === memberId) { setExpandedId(null); return; }
+    setExpandedId(memberId);
+    if (!access[memberId]) await loadAccess(memberId);
+  }
+
+  async function toggleEventAccess(memberId, eventId, assigned) {
+    await fetch('/api/consultant/collaborator-events', {
+      method: assigned ? 'DELETE' : 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+      body: JSON.stringify({ member_id: memberId, event_id: eventId }),
+    });
+    await loadAccess(memberId);
   }
 
   async function removeMember(member) {
@@ -93,6 +128,15 @@ export default function TeamPage() {
               <input value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} minLength={6} required />
               <span className="field-hint">A pessoa pode trocar depois em “Esqueci minha senha”.</span>
             </label>
+            <label className="field" style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <input
+                type="checkbox"
+                style={{ width: 'auto' }}
+                checked={form.can_edit}
+                onChange={(e) => setForm({ ...form, can_edit: e.target.checked })}
+              />
+              <span style={{ margin: 0 }}>Pode criar e editar eventos/convidados (desmarque para somente leitura)</span>
+            </label>
             <button type="submit" className="btn btn-primary" disabled={saving}>
               {saving ? 'Adicionando…' : 'Adicionar colaborador'}
             </button>
@@ -111,19 +155,74 @@ export default function TeamPage() {
         ) : (
           <div className="card card-flush">
             <table className="table">
-              <thead><tr><th>Colaborador</th><th /></tr></thead>
+              <thead><tr><th>Colaborador</th><th>Permissão</th><th /></tr></thead>
               <tbody>
-                {members.map((m) => (
-                  <tr key={m.id}>
-                    <td>
-                      <div style={{ fontWeight: 500 }}>{m.full_name}</div>
-                      <div className="tiny">{m.email}</div>
-                    </td>
-                    <td style={{ textAlign: 'right' }}>
-                      <button className="btn btn-ghost" onClick={() => removeMember(m)}>Remover acesso</button>
-                    </td>
-                  </tr>
-                ))}
+                {members.map((m) => {
+                  const isOpen = expandedId === m.id;
+                  const memberAccess = access[m.id];
+                  return (
+                    <Fragment key={m.id}>
+                      <tr>
+                        <td>
+                          <div style={{ fontWeight: 500 }}>{m.full_name}</div>
+                          <div className="tiny">{m.email}</div>
+                        </td>
+                        <td>
+                          <span className={m.can_edit ? 'badge badge-confirmed' : 'badge badge-pending'}>
+                            {m.can_edit ? 'Pode editar' : 'Somente leitura'}
+                          </span>
+                        </td>
+                        <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                          <button className="btn btn-ghost" onClick={() => toggleExpand(m.id)}>
+                            {isOpen ? 'Fechar' : 'Eventos'}
+                          </button>{' '}
+                          <button className="btn btn-ghost" onClick={() => toggleCanEdit(m)}>
+                            {m.can_edit ? 'Tornar somente leitura' : 'Permitir edição'}
+                          </button>{' '}
+                          <button className="btn btn-ghost" onClick={() => removeMember(m)}>Remover acesso</button>
+                        </td>
+                      </tr>
+                      {isOpen && (
+                        <tr>
+                          <td colSpan={3} style={{ padding: 14 }}>
+                            {!memberAccess ? (
+                              <p className="meta">Carregando eventos…</p>
+                            ) : memberAccess.events.length === 0 ? (
+                              <p className="meta">Você ainda não tem eventos cadastrados.</p>
+                            ) : (
+                              <div>
+                                <p className="meta" style={{ marginBottom: 10 }}>
+                                  {memberAccess.assigned.length === 0
+                                    ? 'Sem restrição: essa pessoa vê todos os seus eventos. Marque abaixo para limitar a eventos específicos.'
+                                    : 'Vendo só os eventos marcados abaixo.'}
+                                </p>
+                                <div style={{ display: 'grid', gap: 8 }}>
+                                  {memberAccess.events.map((ev) => {
+                                    const assigned = memberAccess.assigned.includes(ev.id);
+                                    return (
+                                      <label key={ev.id} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                        <input
+                                          type="checkbox"
+                                          style={{ width: 'auto' }}
+                                          checked={assigned}
+                                          onChange={() => toggleEventAccess(m.id, ev.id, assigned)}
+                                        />
+                                        <span>{ev.event_name}</span>
+                                        <span className="tiny">
+                                          {new Date(ev.event_date).toLocaleDateString('pt-BR', { day: 'numeric', month: 'short', year: 'numeric' })}
+                                        </span>
+                                      </label>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            )}
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>
+                  );
+                })}
               </tbody>
             </table>
           </div>

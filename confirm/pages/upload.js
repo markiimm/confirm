@@ -28,7 +28,11 @@ export default function UploadPage() {
     formData.append('event_id', eventId);
     formData.append('file', file);
 
-    const res = await fetch('/api/upload-guests', { method: 'POST', body: formData });
+    const res = await fetch('/api/upload-guests', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${session.access_token}` },
+      body: formData,
+    });
     const data = await res.json();
 
     if (!res.ok) {

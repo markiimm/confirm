@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useProtectedPage } from '../../lib/useProtectedPage';
 import { EVENT_TYPES } from '../../lib/eventTypes';
-import { Shell, Loading, Empty, Tally, ResponseRing, Counter } from '../../components/ui';
+import { Shell, Loading, Empty, Tally, ResponseRing, Counter, canEdit } from '../../components/ui';
 import { useToast } from '../../components/Toast';
 
 const BLANK = { event_name: '', event_type: 'casamento', event_date: '' };
@@ -111,9 +111,11 @@ export default function ConsultoraDashboard() {
             <h1>Meus eventos</h1>
             <p className="lede">Acompanhe quem já confirmou presença em cada evento.</p>
           </div>
-          <button className="btn btn-primary" onClick={() => setShowForm(!showForm)}>
-            {showForm ? 'Cancelar' : 'Criar evento'}
-          </button>
+          {canEdit(profile) && (
+            <button className="btn btn-primary" onClick={() => setShowForm(!showForm)}>
+              {showForm ? 'Cancelar' : 'Criar evento'}
+            </button>
+          )}
         </div>
 
         {totals.guests > 0 && (
@@ -214,9 +216,11 @@ export default function ConsultoraDashboard() {
               </div>
             </div>
 
-            <button className="btn btn-primary" style={{ marginTop: 16 }} onClick={() => setShowForm(true)}>
-              Criar meu primeiro evento
-            </button>
+            {canEdit(profile) && (
+              <button className="btn btn-primary" style={{ marginTop: 16 }} onClick={() => setShowForm(true)}>
+                Criar meu primeiro evento
+              </button>
+            )}
           </section>
         ) : (
           <div style={{ display: 'grid', gap: 14 }}>
@@ -256,9 +260,11 @@ export default function ConsultoraDashboard() {
                     <a href={`/consultora/event/${ev.id}`} className="btn btn-secondary">
                       Ver convidados
                     </a>
-                    <a href={`/upload?event_id=${ev.id}`} className="btn btn-ghost">
-                      Enviar planilha
-                    </a>
+                    {canEdit(profile) && (
+                      <a href={`/upload?event_id=${ev.id}`} className="btn btn-ghost">
+                        Enviar planilha
+                      </a>
+                    )}
                     {ev.guest_total > 0 && (
                       <a href={`/api/export-guests?event_id=${ev.id}`} className="btn btn-ghost">
                         Baixar lista

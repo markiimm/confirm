@@ -2,6 +2,12 @@ import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/router';
 import { supabase } from '../lib/supabaseClient';
 
+// Colaborador com can_edit=false só visualiza (espelha lib/requireAuth.js
+// no servidor). Titular e owner sempre podem editar.
+export function canEdit(profile) {
+  return !profile || profile.role !== 'collaborator' || profile.can_edit !== false;
+}
+
 /* ---------- Contador animado ----------
    Números que sobem ao carregar dão a sensação de dado vivo. */
 export function Counter({ value = 0, suffix = '', duration = 900 }) {
@@ -166,13 +172,19 @@ export function Shell({ children, role }) {
           { href: '/owner/dashboard', label: 'Visão geral' },
           { href: '/owner/consultants', label: 'Empresas' },
           { href: '/owner/users', label: 'Usuários' },
+          { href: '/owner/support', label: 'Suporte' },
+          { href: '/owner/audit', label: 'Log' },
         ]
       : role === 'collaborator'
-      ? [{ href: '/consultora/dashboard', label: 'Meus eventos' }]
+      ? [
+          { href: '/consultora/dashboard', label: 'Meus eventos' },
+          { href: '/consultora/support', label: 'Suporte' },
+        ]
       : [
           { href: '/consultora/dashboard', label: 'Meus eventos' },
           { href: '/consultora/team', label: 'Equipe' },
           { href: '/consultora/billing', label: 'Assinatura' },
+          { href: '/consultora/support', label: 'Suporte' },
         ];
 
   async function handleSignOut() {

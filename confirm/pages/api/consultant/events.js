@@ -1,15 +1,15 @@
 import { supabaseAdmin } from '../../../lib/supabase';
-import { getAuthedProfile, canManageEvents } from '../../../lib/requireAuth';
+import { getAuthedProfile, canManageEvents, getAllowedEventIds } from '../../../lib/requireAuth';
 
 export default async function handler(req, res) {
   const profile = await getAuthedProfile(req);
   if (!canManageEvents(profile)) return res.status(403).json({ error: 'Acesso negado' });
 
-  const { data: events, error } = await supabaseAdmin
-    .from('events')
-    .select('*')
-    .eq('consultant_id', profile.account_id)
-    .order('event_date');
+  const allowedIds = await getAllowedEventIds(profile);
+
+  let query = supabaseAdmin.from('events').select('*').eq('consultant_id', profile.account_id).order('event_date');
+  if (allowedIds) query = query.in('id', allowedIds);
+  const { data: events, error } = await query;
   if (error) return res.status(500).json({ error: error.message });
 
   const withCounts = await Promise.all(

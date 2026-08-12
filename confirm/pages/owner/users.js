@@ -4,6 +4,7 @@ import { PATTERN_TYPES } from '../../lib/patternTypes';
 import { EVENT_TYPES } from '../../lib/eventTypes';
 import { Shell, Loading, Empty, ROLE_META } from '../../components/ui';
 import { useToast } from '../../components/Toast';
+import { downloadCSV } from '../../lib/csv';
 
 // Ignora acento e caixa, pra "joão" achar "Joao" e vice-versa.
 function normalize(text) {
@@ -57,6 +58,20 @@ export default function UsersPage() {
     setSearch('');
     setRoleFilter('all');
     setStatusFilter('all');
+  }
+
+  function exportCSV() {
+    downloadCSV(
+      'usuarios.csv',
+      filtered.map((u) => ({
+        Nome: u.full_name,
+        'E-mail': u.email,
+        Papel: (ROLE_META[u.role] || ROLE_META.consultant).label,
+        Empresa: u.company_name || (u.role === 'consultant' ? u.full_name : ''),
+        Acesso: u.active ? 'Liberado' : 'Bloqueado',
+        'Criado em': new Date(u.created_at).toLocaleDateString('pt-BR'),
+      }))
+    );
   }
 
   function startEdit(u) {
@@ -130,6 +145,9 @@ export default function UsersPage() {
           {hasFilters && (
             <button className="btn btn-ghost" onClick={clearFilters}>Limpar filtros</button>
           )}
+          <button className="btn btn-secondary" onClick={exportCSV} disabled={!filtered.length}>
+            Exportar CSV
+          </button>
         </div>
 
         {users !== null && (

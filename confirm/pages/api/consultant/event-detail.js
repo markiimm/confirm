@@ -1,10 +1,11 @@
 import crypto from 'crypto';
 import { supabaseAdmin } from '../../../lib/supabase';
-import { getAuthedProfile, canManageEvents } from '../../../lib/requireAuth';
+import { getAuthedProfile, canManageEvents, canEditEvents, getAllowedEventIds, isEventAllowed } from '../../../lib/requireAuth';
 
-async function loadEventOwnedBy(eventId, accountId) {
+async function loadEventOwnedBy(eventId, accountId, allowedIds) {
   const { data: event } = await supabaseAdmin.from('events').select('*').eq('id', eventId).single();
   if (!event || event.consultant_id !== accountId) return null;
+  if (!isEventAllowed(allowedIds, event.id)) return null;
   return event;
 }
 
@@ -12,9 +13,11 @@ export default async function handler(req, res) {
   const profile = await getAuthedProfile(req);
   if (!canManageEvents(profile)) return res.status(403).json({ error: 'Acesso negado' });
 
+  const allowedIds = await getAllowedEventIds(profile);
+
   if (req.method === 'GET') {
     const { event_id } = req.query;
-    const event = await loadEventOwnedBy(event_id, profile.account_id);
+    const event = await loadEventOwnedBy(event_id, profile.account_id, allowedIds);
     if (!event) return res.status(404).json({ error: 'Evento não encontrado' });
 
     const { data: guests } = await supabaseAdmin
@@ -27,8 +30,10 @@ export default async function handler(req, res) {
   }
 
   if (req.method === 'PATCH') {
+    if (!canEditEvents(profile)) return res.status(403).json({ error: 'Acesso negado' });
+
     const { event_id, invite_message_template, generate_portal_token, revoke_portal_token } = req.body;
-    const event = await loadEventOwnedBy(event_id, profile.account_id);
+    const event = await loadEventOwnedBy(event_id, profile.account_id, allowedIds);
     if (!event) return res.status(404).json({ error: 'Evento não encontrado' });
 
     const updates = {};

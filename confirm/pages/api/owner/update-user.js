@@ -1,5 +1,6 @@
 import { supabaseAdmin } from '../../../lib/supabase';
 import { getAuthedProfile } from '../../../lib/requireAuth';
+import { logAction } from '../../../lib/auditLog';
 
 // Edição administrativa de qualquer perfil (dono, empresa ou colaborador):
 // dados de contato, senha, plano/negócio (quando fizer sentido) e acesso.
@@ -35,6 +36,11 @@ export default async function handler(req, res) {
     const { error } = await supabaseAdmin.from('profiles').update(updates).eq('id', id);
     if (error) return res.status(500).json({ error: error.message });
   }
+
+  await logAction(profile.id, 'user.update', id, {
+    ...updates,
+    password_changed: Boolean(password),
+  });
 
   res.status(200).json({ ok: true });
 }

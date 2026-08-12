@@ -4,6 +4,7 @@ import { EVENT_TYPES } from '../../lib/eventTypes';
 import { PATTERN_TYPES } from '../../lib/patternTypes';
 import { Shell, Loading, Empty, SUBSCRIPTION_META } from '../../components/ui';
 import { useToast } from '../../components/Toast';
+import { downloadCSV } from '../../lib/csv';
 
 const BLANK = {
   full_name: '', email: '', password: '',
@@ -109,6 +110,20 @@ export default function ConsultantsPage() {
     loadConsultants(session.access_token);
   }
 
+  function exportCSV() {
+    downloadCSV(
+      'empresas.csv',
+      (consultants || []).map((c) => ({
+        Empresa: c.full_name,
+        'E-mail': c.email,
+        Plano: c.plan === 'pro' ? 'PRO' : 'Normal',
+        Assinatura: (SUBSCRIPTION_META[c.subscription_status] || SUBSCRIPTION_META.canceled).label,
+        Acesso: c.active ? 'Liberado' : 'Bloqueado',
+        'Criado em': new Date(c.created_at).toLocaleDateString('pt-BR'),
+      }))
+    );
+  }
+
   if (loading) return <Loading />;
 
   return (
@@ -120,9 +135,14 @@ export default function ConsultantsPage() {
             <h1>Empresas</h1>
             <p className="lede">Quem usa a plataforma e em que situação está cada conta.</p>
           </div>
-          <button className="btn btn-primary" onClick={() => setShowForm(!showForm)}>
-            {showForm ? 'Cancelar' : 'Cadastrar empresa'}
-          </button>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button className="btn btn-secondary" onClick={exportCSV} disabled={!consultants?.length}>
+              Exportar CSV
+            </button>
+            <button className="btn btn-primary" onClick={() => setShowForm(!showForm)}>
+              {showForm ? 'Cancelar' : 'Cadastrar empresa'}
+            </button>
+          </div>
         </div>
 
         {showForm && (

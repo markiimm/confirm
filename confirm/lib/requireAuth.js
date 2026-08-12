@@ -53,7 +53,29 @@ export function canManageEvents(profile) {
   return profile && (profile.role === 'consultant' || profile.role === 'collaborator');
 }
 
+// Colaborador com can_edit=false só visualiza — nunca cria, edita ou
+// apaga evento/convidado. Titular e owner sempre podem editar.
+export function canEditEvents(profile) {
+  if (!canManageEvents(profile)) return false;
+  return profile.role !== 'collaborator' || profile.can_edit !== false;
+}
+
 // Só o titular da empresa mexe em assinatura e em equipe
 export function isAccountOwner(profile) {
   return profile && profile.role === 'consultant';
+}
+
+// Se o colaborador não tiver nenhuma restrição em event_access, ele
+// continua vendo todos os eventos da empresa (null = sem restrição).
+// Assim que a consultora atribuir ao menos um evento a ele, passa a
+// enxergar só os eventos da lista retornada.
+export async function getAllowedEventIds(profile) {
+  if (!profile || profile.role !== 'collaborator') return null;
+  const { data } = await supabaseAdmin.from('event_access').select('event_id').eq('collaborator_id', profile.id);
+  if (!data || data.length === 0) return null;
+  return data.map((r) => r.event_id);
+}
+
+export function isEventAllowed(allowedIds, eventId) {
+  return !allowedIds || allowedIds.includes(eventId);
 }

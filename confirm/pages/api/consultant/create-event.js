@@ -1,11 +1,11 @@
 import { supabaseAdmin } from '../../../lib/supabase';
-import { getAuthedProfile, canManageEvents } from '../../../lib/requireAuth';
+import { getAuthedProfile, canEditEvents } from '../../../lib/requireAuth';
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).end();
 
   const profile = await getAuthedProfile(req);
-  if (!canManageEvents(profile)) return res.status(403).json({ error: 'Acesso negado' });
+  if (!canEditEvents(profile)) return res.status(403).json({ error: 'Acesso negado' });
 
   const { event_name, event_type, event_date } = req.body;
   if (!event_name || !event_date) {
