@@ -165,6 +165,7 @@ export function Shell({ children, role }) {
       ? [
           { href: '/owner/dashboard', label: 'Visão geral' },
           { href: '/owner/consultants', label: 'Empresas' },
+          { href: '/owner/users', label: 'Usuários' },
         ]
       : role === 'collaborator'
       ? [{ href: '/consultora/dashboard', label: 'Meus eventos' }]
@@ -231,4 +232,10 @@ export const SUBSCRIPTION_META = {
   active: { label: 'Ativa', className: 'badge badge-confirmed' },
   past_due: { label: 'Pagamento pendente', className: 'badge badge-declined' },
   canceled: { label: 'Cancelada', className: 'badge badge-neutral' },
+};
+
+export const ROLE_META = {
+  owner: { label: 'Administrador', className: 'badge badge-neutral' },
+  consultant: { label: 'Empresa (titular)', className: 'badge badge-confirmed' },
+  collaborator: { label: 'Colaborador', className: 'badge badge-pending' },
 };
