@@ -103,6 +103,11 @@ returns uuid as $$
   select coalesce(parent_id, id) from profiles where id = auth.uid();
 $$ language sql security definer;
 
+-- Colaborador precisa ler o perfil da empresa a que pertence (plano,
+-- assinatura, etc.) — sem essa política, o login do colaborador é
+-- barrado pelo RLS e ele é jogado de volta para /login.
+create policy "profiles_account_select" on profiles for select using (id = account_id());
+
 -- events: a empresa (e seus colaboradores) só vê/edita os próprios eventos
 create policy "events_account_select" on events for select using (consultant_id = account_id());
 create policy "events_account_manage" on events for all using (consultant_id = account_id());
