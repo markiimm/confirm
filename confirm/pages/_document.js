@@ -5,6 +5,7 @@ export default function Document() {
     <Html lang="pt-BR">
       <Head>
         <meta name="theme-color" content="#0b0f17" />
+        <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
         <link
